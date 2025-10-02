@@ -1,13 +1,24 @@
 package lashen.dev.ishop.controllers;
 
+import jakarta.validation.Valid;
+import lashen.dev.ishop.dtos.ProductDto;
 import lashen.dev.ishop.models.Product;
 import lashen.dev.ishop.services.ProductsRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.InputStream;
+import java.nio.file.*;
+import java.util.Date;
 import java.util.List;
 
 @Controller
@@ -19,8 +30,59 @@ public class ProductController {
 
     @GetMapping({"", "/"})
     public String showProductsList(Model model) {
-        List<Product> products = productsRepository.findAll();
+        List<Product> products = productsRepository.findAll(Sort.by("id").descending());
         model.addAttribute("products", products);
         return "products/index";
+    }
+
+    @GetMapping("/create")
+    public String showCreatePage(Model model) {
+        ProductDto productDto = new ProductDto();
+        model.addAttribute("productDto", productDto);
+        return "products/createProduct";
+    }
+
+    @PostMapping("/create")
+    public String createProduct(@Valid @ModelAttribute ProductDto productDto, BindingResult bindingResult) {
+
+        if(productDto.getImageFile().isEmpty()){
+            bindingResult.addError(new FieldError("productDto", "imageFile", "The image file is required"));
+        }
+
+        if(bindingResult.hasErrors()){
+            return "products/createProduct";
+        }
+
+        MultipartFile imageFile = productDto.getImageFile();
+        Date createdAt = new Date();
+        String storageFileName = createdAt.toString() + "_" + imageFile.getOriginalFilename();
+
+        try {
+            String uploadDir = "public/images/";
+            Path uploadPath = Paths.get(uploadDir);
+
+            if(!Files.exists(uploadPath)){
+                Files.createDirectories(uploadPath);
+            }
+
+            try (InputStream inputStream = imageFile.getInputStream()){
+                Files.copy(inputStream, Paths.get(uploadDir, storageFileName), StandardCopyOption.REPLACE_EXISTING);
+            }
+        }catch (Exception e){
+            System.out.println("Exception: " + e.getMessage());
+        }
+
+        Product product = new Product();
+        product.setName(productDto.getName());
+        product.setBrand(productDto.getBrand());
+        product.setCategory(productDto.getCategory());
+        product.setPrice(productDto.getPrice());
+        product.setDescription(productDto.getDescription());
+        product.setCreateAt(createdAt);
+        product.setImageFileName(storageFileName);
+
+        productsRepository.save(product);
+
+        return "redirect:/products";
     }
 }
